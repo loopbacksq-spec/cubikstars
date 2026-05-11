@@ -926,7 +926,7 @@ function getHTMLClient() {
             playSound('click');
         });
 
-        // Закрыть чат (Устранение бага с перекрытием экрана!)
+        // Закрыть чат
         document.getElementById('chat-close-btn').addEventListener('click', () => {
             document.getElementById('chat-panel').classList.remove('open');
             playSound('click');
@@ -947,9 +947,7 @@ function getHTMLClient() {
 
         socket.on('chat_broadcast', (data) => {
             const chatBox = document.getElementById('chat-messages');
-            chatBox.innerHTML += `
-                <div class="chat-msg"><span>\${data.username}:</span> \${data.message}</div>
-            `;
+            chatBox.innerHTML += '<div class="chat-msg"><span>' + data.username + ':</span> ' + data.message + '</div>';
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
@@ -961,12 +959,11 @@ function getHTMLClient() {
             const container = document.getElementById('leaderboard-rows');
             container.innerHTML = '';
             data.leaderboard.forEach((player, i) => {
-                container.innerHTML += `
-                    <div class="leaderboard-row" style="\${player.username === myUsername ? 'color: #ffcb05;' : ''}">
-                        <span>\${i+1}. \${player.username}</span>
-                        <span>🏆 \${player.elo}</span>
-                    </div>
-                `;
+                const isMe = player.username === myUsername;
+                container.innerHTML += '<div class="leaderboard-row" style="' + (isMe ? 'color: #ffcb05;' : '') + '">' +
+                    '<span>' + (i+1) + '. ' + player.username + '</span>' +
+                    '<span>🏆 ' + player.elo + '</span>' +
+                '</div>';
             });
         });
 
@@ -1219,7 +1216,7 @@ function getHTMLClient() {
             playSound('click');
             document.getElementById('result-overlay').style.display = 'none';
             document.getElementById('game-screen').classList.remove('active-screen');
-            document.getElementById('menu-screen').classList.add('add-screen');
+            document.getElementById('menu-screen').classList.add('active-screen');
             location.reload(); // Перезапустит страницу, авто-вход сработает моментально!
         });
 

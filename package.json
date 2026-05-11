@@ -1,12 +1,13 @@
 {
-  "name": "brawl-stars-server",
+  "name": "brawl-sps-3d",
   "version": "1.0.0",
-  "description": "Brawl Stars Multiplayer Server",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
   },
   "dependencies": {
-    "ws": "^8.18.0"
+    "express": "^4.19.2",
+    "socket.io": "^4.7.5",
+    "sqlite3": "^5.1.7"
   }
 }

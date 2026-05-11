@@ -3,7 +3,6 @@ const http = require('http');
 const socketIo = require('socket.io');
 const sqlite3 = require('sqlite3').verbose();
 const path = require('path');
-const fs = require('fs');
 
 const app = express();
 const server = http.createServer(app);
@@ -731,7 +730,7 @@ function getHTMLClient() {
         function createProceduralHand(colorStr) {
             const handGroup = new THREE.Group();
             const color = new THREE.Color(colorStr);
-            const mat = new THREE.MeshStandardMaterial({ color, roughness: 0.5 });
+            const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
             
             // Ладонь
             const palmGeom = new THREE.BoxGeometry(0.8, 0.8, 0.2);
@@ -743,7 +742,7 @@ function getHTMLClient() {
             for (let i = 0; i < 4; i++) {
                 const finger = new THREE.Mesh(fingerGeom, mat);
                 finger.position.set(-0.3 + i * 0.2, 0.5, 0);
-                finger.name = `finger_${i}`;
+                finger.name = "finger_" + i;
                 handGroup.add(finger);
             }
             // Большой палец
@@ -838,7 +837,7 @@ function getHTMLClient() {
 
         function resetHandFingers(hand) {
             hand.position.set(hand === leftHand ? -1.8 : 1.8, hand === leftHand ? -1.5 : 1.5, 0);
-            hand.children.forEach(c => {
+            hand.children.forEach(function(c) {
                 if(c.name.startsWith('finger_')) {
                     c.scale.set(1, 1, 1);
                     c.visible = true;
@@ -848,7 +847,7 @@ function getHTMLClient() {
 
         function applyMoveToHand(hand, move) {
             // Имитируем Камень, Ножницы, Бумагу
-            hand.children.forEach(c => {
+            hand.children.forEach(function(c) {
                 if (c.name.startsWith('finger_')) {
                     if (move === 'rock') {
                         c.scale.y = 0.1; // Сжатые пальцы
@@ -893,16 +892,16 @@ function getHTMLClient() {
 
         // Лидерборд и чат
         socket.on('update_leaderboard', (data) => {
-            document.getElementById('online-counter').textContent = `Онлайн: ${data.onlineCount}`;
+            document.getElementById('online-counter').textContent = "Онлайн: " + data.onlineCount;
             const container = document.getElementById('leaderboard-rows');
             container.innerHTML = '';
             data.leaderboard.forEach((player, i) => {
-                container.innerHTML += `
-                    <div class="leaderboard-row" style="${player.username === myUsername ? 'color: #ffcb05;' : ''}">
-                        <span>${i+1}. ${player.username}</span>
-                        <span>🏆 ${player.elo}</span>
+                container.innerHTML += \`
+                    <div class="leaderboard-row" style="\${player.username === myUsername ? 'color: #ffcb05;' : ''}">
+                        <span>\${i+1}. \${player.username}</span>
+                        <span>🏆 \${player.elo}</span>
                     </div>
-                `;
+                \`;
             });
         });
 
@@ -927,9 +926,9 @@ function getHTMLClient() {
 
         socket.on('chat_broadcast', (data) => {
             const chatBox = document.getElementById('chat-messages');
-            chatBox.innerHTML += `
-                <div class="chat-msg"><span>${data.username}:</span> ${data.message}</div>
-            `;
+            chatBox.innerHTML += \`
+                <div class="chat-msg"><span>\${data.username}:</span> \${data.message}</div>
+            \`;
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
@@ -967,8 +966,8 @@ function getHTMLClient() {
             document.getElementById('play-trigger').textContent = 'ИГРАТЬ';
             
             // Инициализация игрового HUD
-            document.getElementById('game-p1-name').textContent = `${myUsername} (🏆${myElo})`;
-            document.getElementById('game-p2-name').textContent = `${data.opponent.username} (🏆${data.opponent.elo})`;
+            document.getElementById('game-p1-name').textContent = myUsername + " (🏆" + myElo + ")";
+            document.getElementById('game-p2-name').textContent = data.opponent.username + " (🏆" + data.opponent.elo + ")";
 
             resetKOCircles();
 
@@ -990,8 +989,8 @@ function getHTMLClient() {
             botScore = [0, 0];
             botRound = 1;
 
-            document.getElementById('game-p1-name').textContent = `${myUsername} (🏆${myElo})`;
-            document.getElementById('game-p2-name').textContent = `Эль Примо Бот (🏆${Math.max(0, myElo + 20)})`;
+            document.getElementById('game-p1-name').textContent = myUsername + " (🏆" + myElo + ")";
+            document.getElementById('game-p2-name').textContent = "Эль Примо Бот (🏆" + Math.max(0, myElo + 20) + ")";
 
             resetKOCircles();
 
@@ -1003,7 +1002,7 @@ function getHTMLClient() {
         }
 
         function startBotRound() {
-            document.getElementById('game-round-title').textContent = `РАУНД ${botRound}`;
+            document.getElementById('game-round-title').textContent = "РАУНД " + botRound;
             resetHandFingers(leftHand);
             resetHandFingers(rightHand);
             playShakeHandsAnimation();
@@ -1017,7 +1016,7 @@ function getHTMLClient() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 timeLeft -= 0.1;
-                timerBar.style.width = `${(timeLeft / 10) * 100}%`;
+                timerBar.style.width = (timeLeft / 10) * 100 + "%";
                 if(timeLeft <= 0) {
                     clearInterval(timerInterval);
                     processBotRound('none'); // Слив по таймеру
@@ -1077,7 +1076,7 @@ function getHTMLClient() {
                     if(myElo < 0) myElo = 0;
 
                     // Обновляем на сервере, чтобы локальная бд синхронизировалась
-                    socket.emit('chat_message', `[Бот-Матч] Я сыграл в оффлайне! Мой новый рейтинг: ${myElo} ELO`); 
+                    socket.emit('chat_message', "[Бот-Матч] Я сыграл в оффлайне! Мой новый рейтинг: " + myElo + " ELO"); 
 
                     showMatchResult(matchResult, eloChange, myElo);
                 } else {
@@ -1088,7 +1087,7 @@ function getHTMLClient() {
 
         // Онлайн матчи по сети
         socket.on('start_round', (data) => {
-            document.getElementById('game-round-title').textContent = `РАУНД ${data.roundNum}`;
+            document.getElementById('game-round-title').textContent = "РАУНД " + data.roundNum;
             resetHandFingers(leftHand);
             resetHandFingers(rightHand);
             playShakeHandsAnimation();
@@ -1101,7 +1100,7 @@ function getHTMLClient() {
             if (timerInterval) clearInterval(timerInterval);
             timerInterval = setInterval(() => {
                 timeLeft -= 0.1;
-                timerBar.style.width = `${(timeLeft / 10) * 100}%`;
+                timerBar.style.width = (timeLeft / 10) * 100 + "%";
                 if(timeLeft <= 0) clearInterval(timerInterval);
             }, 100);
         });
@@ -1151,15 +1150,15 @@ function getHTMLClient() {
 
         function resetKOCircles() {
             for(let i=1; i<=2; i++) {
-                document.getElementById(`p1-round-${i}`).classList.remove('active');
-                document.getElementById(`p2-round-${i}`).classList.remove('active');
+                document.getElementById("p1-round-" + i).classList.remove('active');
+                document.getElementById("p2-round-" + i).classList.remove('active');
             }
         }
 
         function updateKOCircles(p1Wins, p2Wins) {
             for(let i=1; i<=2; i++) {
-                if(p1Wins >= i) document.getElementById(`p1-round-${i}`).classList.add('active');
-                if(p2Wins >= i) document.getElementById(`p2-round-${i}`).classList.add('active');
+                if(p1Wins >= i) document.getElementById("p1-round-" + i).classList.add('active');
+                if(p2Wins >= i) document.getElementById("p2-round-" + i).classList.add('active');
             }
         }
 
@@ -1171,14 +1170,14 @@ function getHTMLClient() {
             const resTitle = document.getElementById('result-text');
             const resDetail = document.getElementById('result-elo-detail');
 
-            resTitle.className = `result-title \${result}`;
+            resTitle.className = "result-title " + result;
             if(result === 'win') {
                 resTitle.textContent = 'ПОБЕДА!';
-                resDetail.textContent = `+\${eloChange} 🏆 кубков!`;
+                resDetail.textContent = "+" + eloChange + " 🏆 кубков!";
                 playSound('win');
             } else if(result === 'lose') {
                 resTitle.textContent = 'ПОРАЖЕНИЕ!';
-                resDetail.textContent = `\${eloChange} 🏆 кубков!`;
+                resDetail.textContent = eloChange + " 🏆 кубков!";
                 playSound('lose');
             } else {
                 resTitle.textContent = 'НИЧЬЯ!';

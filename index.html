@@ -461,60 +461,119 @@
     <script>
         // --- ПОДКЛЮЧЕНИЕ К СЕРВЕРУ ОНЛАЙНА ---
         // Когда задеплоишь на Render, замени 'ws://localhost:8080' на свой 'wss://имя-приложения.onrender.com'
-        const SERVER_URL = 'ws://cubikstars.onrender.com/'; 
-        let socket = null;
+        // --- ЖЕЛЕЗОБЕТОННОЕ ПОДКЛЮЧЕНИЕ К RENDER ---
+// Проверь, чтобы в конце ссылки НЕ БЫЛО слэша '/'
+const SERVER_URL = 'wss://cubikstars.onrender.com/'; // ТУТ ТВОЯ ССЫЛКА С RENDER (обязательно с wss://)
 
-        function connectToServer() {
-            socket = new WebSocket(SERVER_URL);
+let socket = null;
+let isOfflineMode = false;
 
-            socket.onopen = () => {
-                console.log("Успешное подключение к серверу!");
-            };
+function connectToServer() {
+    console.log("Попытка подключения к серверу: " + SERVER_URL);
+    socket = new WebSocket(SERVER_URL);
 
-            socket.onmessage = (event) => {
-                const data = JSON.parse(event.data);
+    socket.onopen = () => {
+        console.log("✅ УСПЕШНО: Мы подключились к серверу Render! Онлайн активен.");
+        isOfflineMode = false;
+    };
 
-                if (data.type === 'lobby_update') {
-                    // Синхронизированный счетчик лобби для ВСЕХ игроков!
-                    document.getElementById('mm-counter').textContent = `${data.count} / 15`;
-                    playSynthSound(300 + data.count * 20, "sine", 0.08, 0.1);
-                    
-                    // Если лобби заполнено (например, 15 или автостарт с ботами)
-                    if (data.count >= 15) {
-                        // Сервер сам пришлет команду 'game_start'
-                    }
-                }
+    socket.onmessage = (event) => {
+        const data = JSON.parse(event.data);
 
-                if (data.type === 'game_start') {
-                    matchmakingScreen.style.display = 'none';
-                    startBattle(data);
-                }
-
-                if (data.type === 'opponent_update') {
-                    const opp = entities.find(e => e.id === data.id);
-                    if (opp) {
-                        opp.mesh.position.set(data.x, opp.mesh.position.y, data.z);
-                        opp.mesh.rotation.y = data.rotY;
-                        opp.hp = data.hp;
-                        opp.powerups = data.powerups;
-                        opp.isDead = data.isDead;
-                        if (data.isDead) killEntity(opp);
-                    }
-                }
-
-                if (data.type === 'opponent_shoot') {
-                    const opp = entities.find(e => e.id === data.id);
-                    if (opp) {
-                        shootBullet(opp, data.dirX, data.dirZ, false);
-                    }
-                }
-            };
-
-            socket.onclose = () => {
-                console.log("Соединение прервано, переподключение...");
-                setTimeout(connectToServer, 2000);
-            };
+        if (data.type === 'lobby_update') {
+            document.getElementById('mm-counter').textContent = `${data.count} / 15`;
+            playSynthSound(300 + data.count * 20, "sine", 0.08, 0.1);
         }
+
+        if (data.type === 'game_start') {
+            matchmakingScreen.style.display = 'none';
+            if (searchInterval) clearInterval(searchInterval);
+            startBattle(data);
+        }
+
+        if (data.type === 'opponent_update') {
+            const opp = entities.find(e => e.id === data.id);
+            if (opp) {
+                opp.mesh.position.set(data.x, opp.mesh.position.y, data.z);
+                opp.mesh.rotation.y = data.rotY;
+                opp.hp = data.hp;
+                opp.powerups = data.powerups;
+                opp.isDead = data.isDead;
+                if (data.isDead) killEntity(opp);
+            }
+        }
+
+        if (data.type === 'opponent_shoot') {
+            const opp = entities.find(e => e.id === data.id);
+            if (opp) {
+                shootBullet(opp, data.dirX, data.dirZ, false);
+            }
+        }
+    };
+
+    socket.onerror = (error) => {
+        console.error("❌ Ошибка сокета:", error);
+    };
+
+    socket.onclose = (event) => {
+        console.log("ℹ️ Соединение закрыто. Код:", event.code, "Причина:", event.reason);
+        isOfflineMode = true;
+        // Пробуем переподключиться через 3 секунды
+        setTimeout(connectToServer, 3000);
+    };
+}
+
+// Запускаем подключение сразу при загрузке страницы
+connectToServer();
+
+let searchInterval = null;
+btnStart.addEventListener('click', () => {
+    menuScreen.style.display = 'none';
+    matchmakingScreen.style.display = 'flex';
+    
+    // Если сокет открыт — играем по сети!
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        console.log("Отправка запроса на поиск игры на сервер...");
+        socket.send(JSON.stringify({
+            type: 'join_search',
+            username: playerName,
+            trophies: trophies
+        }));
+    } else {
+        // Если сервер временно недоступен — запускаем лобби локально с ботами, чтобы игра не висла!
+        console.log("Сервер не отвечает. Запуск в офлайн-режиме...");
+        let playersFound = 1;
+        document.getElementById('mm-counter').textContent = `1 / 15`;
+        
+        searchInterval = setInterval(() => {
+            playersFound += Math.floor(Math.random() * 3) + 1;
+            if (playersFound > 15) playersFound = 15;
+            
+            document.getElementById('mm-counter').textContent = `${playersFound} / 15`;
+            playSynthSound(300 + playersFound * 20, "sine", 0.08, 0.1);
+
+            if (playersFound >= 15) {
+                clearInterval(searchInterval);
+                matchmakingScreen.style.display = 'none';
+                
+                const localGameData = {
+                    playerIndex: Math.floor(Math.random() * 15),
+                    opponents: [] 
+                };
+                startBattle(localGameData);
+            }
+        }, 200);
+    }
+});
+
+btnCancelMm.addEventListener('click', () => {
+    if (searchInterval) clearInterval(searchInterval);
+    if (socket && socket.readyState === WebSocket.OPEN) {
+        socket.send(JSON.stringify({ type: 'leave_search' }));
+    }
+    matchmakingScreen.style.display = 'none';
+    menuScreen.style.display = 'flex';
+});
 
         // Запуск подключения при старте
         connectToServer();

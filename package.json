@@ -1,0 +1,12 @@
+{
+  "name": "brawl-stars-server",
+  "version": "1.0.0",
+  "description": "Brawl Stars Multiplayer Server",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

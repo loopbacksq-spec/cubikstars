@@ -120,6 +120,10 @@ io.on('connection', (socket) => {
         if (game.roundState === 'waiting_moves' && !player.currentMove) {
             player.currentMove = move;
             
+            // Оповещаем второго игрока, что оппонент сделал выбор (но не показываем какой именно!)
+            const opponent = isPlayer1 ? game.p2 : game.p1;
+            io.to(opponent.socketId).emit('opponent_made_move');
+
             if (game.p1.currentMove && game.p2.currentMove) {
                 processRound(game);
             }
@@ -296,12 +300,8 @@ function endMatch(game) {
         p2EloChange = 25;
     }
 
-    const applyEloChange = (username, change, callback) => {
-        updateElo(username, change, callback);
-    };
-
-    applyEloChange(game.p1.username, p1EloChange, (newElo1) => {
-        applyEloChange(game.p2.username, p2EloChange, (newElo2) => {
+    updateElo(game.p1.username, p1EloChange, (newElo1) => {
+        updateElo(game.p2.username, p2EloChange, (newElo2) => {
             const p1Socket = io.sockets.sockets.get(game.p1.socketId);
             const p2Socket = io.sockets.sockets.get(game.p2.socketId);
 
@@ -450,32 +450,33 @@ function getHTMLClient() {
         #game-screen { background: #0d001a; }
         #canvas-3d-container { position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 1; }
 
-        .game-ui { position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 5; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
-        .hud-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
+        .game-ui { position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 5; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 15px; }
         
-        .knockout-rounds { display: flex; gap: 8px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; }
-        .ko-circle { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: #333; }
-        .ko-blue.active { background: #0088ff; box-shadow: 0 0 10px #0088ff; }
-        .ko-red.active { background: #ff3333; box-shadow: 0 0 10px #ff3333; }
+        /* Ровная вертикальная расстановка HUD на мобилах */
+        .hud-header { display: flex; justify-content: space-between; align-items: center; width: 100%; pointer-events: auto; }
+        
+        .knockout-rounds { display: flex; gap: 6px; background: rgba(0,0,0,0.5); padding: 4px 10px; border-radius: 15px; margin-top: 4px; }
+        .ko-circle { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #fff; background: #333; }
+        .ko-blue.active { background: #0088ff; box-shadow: 0 0 8px #0088ff; }
+        .ko-red.active { background: #ff3333; box-shadow: 0 0 8px #ff3333; }
 
-        /* Понятная шпаргалка правил */
         .rules-bar {
             background: rgba(0,0,0,0.7); border: 2px solid #ffcb05; border-radius: 15px;
-            padding: 6px 15px; font-size: 14px; text-align: center; color: #fff;
+            padding: 6px 12px; font-size: 13px; text-align: center; color: #fff;
             box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-shadow: 1px 1px 0 #000;
-            display: inline-block; margin-bottom: 5px; pointer-events: none;
+            display: inline-block; margin-bottom: 8px; pointer-events: none;
         }
 
         .game-controls-container {
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            width: 100%; pointer-events: auto;
+            width: 100%; pointer-events: auto; margin-bottom: 10px;
         }
 
-        .game-controls { display: flex; gap: 15px; justify-content: center; margin-bottom: 10px; width: 100%; }
+        .game-controls { display: flex; gap: 12px; justify-content: center; width: 100%; }
         .control-btn {
-            width: 90px; height: 90px; border-radius: 50%; border: 4px solid #fff;
+            width: 80px; height: 80px; border-radius: 50%; border: 4px solid #fff;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
-            font-size: 32px; cursor: pointer; background: #e00000;
+            font-size: 28px; cursor: pointer; background: #e00000;
             box-shadow: 0 6px 0 #800000, 0 10px 15px rgba(0,0,0,0.5);
             transition: transform 0.1s;
         }
@@ -484,7 +485,7 @@ function getHTMLClient() {
         .control-btn[data-move="paper"] { background: linear-gradient(#62c462, #51a351); box-shadow: 0 6px 0 #387338; }
         .control-btn[data-move="scissors"] { background: linear-gradient(#fbb450, #f89406); box-shadow: 0 6px 0 #ad6704; }
 
-        .timer-bar-container { width: 250px; height: 20px; background: #333; border: 3px solid #fff; border-radius: 10px; overflow: hidden; pointer-events: none; }
+        .timer-bar-container { width: 160px; height: 14px; background: #333; border: 2px solid #fff; border-radius: 8px; overflow: hidden; pointer-events: none; margin-top: 4px; }
         .timer-bar { width: 100%; height: 100%; background: #ffcb05; transition: width 0.1s linear; }
 
         .overlay-result {
@@ -492,7 +493,7 @@ function getHTMLClient() {
             z-index: 300; display: none; flex-direction: column; align-items: center; justify-content: center;
             text-align: center;
         }
-        .result-title { font-size: 64px; text-shadow: 4px 4px 0 #000; font-weight: 900; transform: scale(0.5); opacity: 0; }
+        .result-title { font-size: 56px; text-shadow: 4px 4px 0 #000; font-weight: 900; transform: scale(0.5); opacity: 0; }
         .result-title.win { color: #ffcb05; }
         .result-title.lose { color: #ff3333; }
         .result-title.draw { color: #cccccc; }
@@ -501,8 +502,9 @@ function getHTMLClient() {
             .leaderboard-panel { display: none; }
             .chat-panel { width: 260px; }
             .play-btn { padding: 15px 40px; font-size: 22px; }
-            .control-btn { width: 70px; height: 70px; font-size: 24px; }
+            .control-btn { width: 75px; height: 75px; font-size: 26px; }
             .rules-bar { font-size: 11px; padding: 4px 10px; }
+            .timer-bar-container { width: 120px; }
         }
     </style>
 </head>
@@ -562,8 +564,8 @@ function getHTMLClient() {
 
         <div class="game-ui">
             <div class="hud-header">
-                <div style="text-align: left; background: rgba(0,0,255,0.3); padding: 5px 15px; border-radius: 15px; border: 2px solid #0088ff;">
-                    <div id="game-p1-name" style="text-shadow: 2px 2px #000; font-size: 16px;">Вы</div>
+                <div style="text-align: left; background: rgba(0,0,255,0.3); padding: 5px 12px; border-radius: 12px; border: 2px solid #0088ff;">
+                    <div id="game-p1-name" style="text-shadow: 2px 2px #000; font-size: 13px;">Вы</div>
                     <div class="knockout-rounds">
                         <div class="ko-circle ko-blue" id="p1-round-1"></div>
                         <div class="ko-circle ko-blue" id="p1-round-2"></div>
@@ -571,12 +573,12 @@ function getHTMLClient() {
                 </div>
 
                 <div style="display: flex; flex-direction: column; align-items: center;">
-                    <div id="game-round-title" style="font-size: 22px; text-shadow: 2px 2px #000; margin-bottom: 5px;">РАУНД 1</div>
+                    <div id="game-round-title" style="font-size: 18px; text-shadow: 2px 2px #000;">РАУНД 1</div>
                     <div class="timer-bar-container"><div id="game-timer-bar" class="timer-bar"></div></div>
                 </div>
 
-                <div style="text-align: right; background: rgba(255,0,0,0.3); padding: 5px 15px; border-radius: 15px; border: 2px solid #ff3333;">
-                    <div id="game-p2-name" style="text-shadow: 2px 2px #000; font-size: 16px;">Враг</div>
+                <div style="text-align: right; background: rgba(255,0,0,0.3); padding: 5px 12px; border-radius: 12px; border: 2px solid #ff3333;">
+                    <div id="game-p2-name" style="text-shadow: 2px 2px #000; font-size: 13px;">Враг</div>
                     <div class="knockout-rounds" style="flex-direction: row-reverse;">
                         <div class="ko-circle ko-red" id="p2-round-1"></div>
                         <div class="ko-circle ko-red" id="p2-round-2"></div>
@@ -689,10 +691,9 @@ function getHTMLClient() {
             }, 350);
         }
 
-        // --- THREE.JS СЦЕНА (МОДЕЛИ) ---
+        // --- THREE.JS СЦЕНА ---
         let scene, camera, renderer, leftHand, rightHand;
         let menuScene, menuCamera, menuRenderer, menuHand;
-        let clock = new THREE.Clock();
 
         function init3DMenu() {
             const container = document.getElementById('menu-3d-bg');
@@ -725,28 +726,23 @@ function getHTMLClient() {
             const color = new THREE.Color(colorStr);
             const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
             
-            // Прямоугольная ладонь
             const palmGeom = new THREE.BoxGeometry(0.8, 0.8, 0.2);
             const palm = new THREE.Mesh(palmGeom, mat);
             handGroup.add(palm);
 
-            // Четыре основных пальца (из звеньев, чтобы их можно было реалистично гнуть)
-            const fingers = [];
             for (let i = 0; i < 4; i++) {
                 const fingerPivot = new THREE.Group();
                 fingerPivot.position.set(-0.3 + i * 0.2, 0.4, 0);
                 fingerPivot.name = "finger_" + i;
 
-                // Основное звено (Фаланга)
                 const boneGeom = new THREE.BoxGeometry(0.16, 0.4, 0.16);
                 const bone = new THREE.Mesh(boneGeom, mat);
-                bone.position.y = 0.2; // Сдвиг центра, чтобы сгиб был у основания
+                bone.position.y = 0.2;
                 fingerPivot.add(bone);
 
                 handGroup.add(fingerPivot);
             }
 
-            // Большой палец (под углом)
             const thumbPivot = new THREE.Group();
             thumbPivot.position.set(-0.45, 0.1, 0.05);
             thumbPivot.rotation.z = 0.6;
@@ -777,13 +773,14 @@ function getHTMLClient() {
             gsap.to(menuHand.scale, { x: 1.7, y: 1.7, duration: 0.1, yoyo: true, repeat: 1 });
         }
 
+        // ВЕРТИКАЛЬНАЯ АРЕНА ДЛЯ СМАРТФОНОВ
         function init3DGame() {
             const container = document.getElementById('canvas-3d-container');
             container.innerHTML = '';
             
             scene = new THREE.Scene();
             camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-            camera.position.set(0, 0, 7);
+            camera.position.set(0, 0, 7.5); // Немного отдалили для лучшего обзора
 
             renderer = new THREE.WebGLRenderer({ antialias: true });
             renderer.setSize(container.clientWidth, container.clientHeight);
@@ -795,16 +792,16 @@ function getHTMLClient() {
             dirLight.position.set(5, 10, 7);
             scene.add(dirLight);
 
-            // Наша рука (Синяя, слева-снизу)
+            // Твоя рука (Синяя): строго снизу по центру
             leftHand = createProceduralHand('#0088ff');
-            leftHand.position.set(-1.8, -1.5, 0);
-            leftHand.rotation.set(0.3, 0.5, -0.2);
+            leftHand.position.set(0, -2.2, 0);
+            leftHand.rotation.set(0.4, 0, 0); // Повернута пальцами от нас к центру
             scene.add(leftHand);
 
-            // Рука противника (Красная, справа-сверху, развернутая)
+            // Рука противника (Красная): строго сверху по центру, развернутая к нам
             rightHand = createProceduralHand('#ff3333');
-            rightHand.position.set(1.8, 1.5, 0);
-            rightHand.rotation.set(-0.3, -2.5, 0.2);
+            rightHand.position.set(0, 2.2, 0);
+            rightHand.rotation.set(-0.4, Math.PI, 0); // Развернута к игроку лицом
             scene.add(rightHand);
 
             animateGame();
@@ -817,29 +814,37 @@ function getHTMLClient() {
             }
         }
 
+        // Анимация покачивания (Тряска перед ходом)
         function playShakeHandsAnimation() {
             if (!leftHand || !rightHand) return;
             
             resetHandFingers(leftHand);
             resetHandFingers(rightHand);
 
-            const t = 0.3;
+            const t = 0.25;
+            // Игроки не видят жесты оппонента, руки сжаты в кулак при покачивании!
+            applyMoveToHand(leftHand, 'rock');
+            applyMoveToHand(rightHand, 'rock');
+
             for(let i=0; i<3; i++) {
-                gsap.to(leftHand.position, { y: -0.8, duration: t, delay: i*t*2, yoyo: true, repeat: 1 });
-                gsap.to(rightHand.position, { y: 0.8, duration: t, delay: i*t*2, yoyo: true, repeat: 1 });
+                gsap.to(leftHand.position, { y: -1.7, duration: t, delay: i*t*2, yoyo: true, repeat: 1 });
+                gsap.to(rightHand.position, { y: 1.7, duration: t, delay: i*t*2, yoyo: true, repeat: 1 });
             }
         }
 
+        // Эпичное столкновение рук в центре при вскрытии
         function showMoves3D(myMove, oppMove) {
+            // Только сейчас руки раскрываются и показывают жесты!
             applyMoveToHand(leftHand, myMove);
             applyMoveToHand(rightHand, oppMove);
 
-            gsap.to(leftHand.position, { z: 1.5, y: -0.5, duration: 0.3 });
-            gsap.to(rightHand.position, { z: 1.5, y: 0.5, duration: 0.3 });
+            // Сближение по вертикали к центру
+            gsap.to(leftHand.position, { y: -0.6, z: 1.2, duration: 0.25, ease: "power2.out" });
+            gsap.to(rightHand.position, { y: 0.6, z: 1.2, duration: 0.25, ease: "power2.out" });
         }
 
         function resetHandFingers(hand) {
-            hand.position.set(hand === leftHand ? -1.8 : 1.8, hand === leftHand ? -1.5 : 1.5, 0);
+            hand.position.set(0, hand === leftHand ? -2.2 : 2.2, 0);
             hand.children.forEach(function(c) {
                 if(c.name.startsWith('finger_')) {
                     c.rotation.x = 0;
@@ -849,48 +854,40 @@ function getHTMLClient() {
             });
         }
 
-        // КРУТЫЕ МОДЕЛИ КАМЕНЬ / НОЖНИЦЫ / БУМАГА
         function applyMoveToHand(hand, move) {
             hand.children.forEach(function(c) {
                 if (c.name.startsWith('finger_')) {
                     if (move === 'rock') {
-                        // Камень: Все сжимается в кулак!
-                        gsap.to(c.rotation, { x: 1.4, duration: 0.2 });
+                        gsap.to(c.rotation, { x: 1.4, duration: 0.15 });
                         if (c.name === 'finger_thumb') {
-                            gsap.to(c.rotation, { z: 1.4, duration: 0.2 });
+                            gsap.to(c.rotation, { z: 1.4, duration: 0.15 });
                         }
                     } else if (move === 'scissors') {
-                        // Ножницы: Вытянуты только указательный (0) и средний (1), раздвинуты «V»!
                         if (c.name === 'finger_0') {
-                            gsap.to(c.rotation, { x: 0, z: -0.2, duration: 0.2 });
+                            gsap.to(c.rotation, { x: 0, z: -0.2, duration: 0.15 });
                         } else if (c.name === 'finger_1') {
-                            gsap.to(c.rotation, { x: 0, z: 0.2, duration: 0.2 });
+                            gsap.to(c.rotation, { x: 0, z: 0.2, duration: 0.15 });
                         } else {
-                            // Остальные согнуты
-                            gsap.to(c.rotation, { x: 1.4, duration: 0.2 });
+                            gsap.to(c.rotation, { x: 1.4, duration: 0.15 });
                         }
                         if (c.name === 'finger_thumb') {
-                            gsap.to(c.rotation, { z: 1.4, duration: 0.2 });
+                            gsap.to(c.rotation, { z: 1.4, duration: 0.15 });
                         }
                     } else if (move === 'paper' || move === 'none') {
-                        // Бумага: Все пальцы идеально раскрыты и растопырены
-                        if (c.name === 'finger_0') gsap.to(c.rotation, { x: 0, z: -0.15, duration: 0.2 });
-                        else if (c.name === 'finger_1') gsap.to(c.rotation, { x: 0, z: -0.05, duration: 0.2 });
-                        else if (c.name === 'finger_2') gsap.to(c.rotation, { x: 0, z: 0.05, duration: 0.2 });
-                        else if (c.name === 'finger_3') gsap.to(c.rotation, { x: 0, z: 0.15, duration: 0.2 });
-                        else if (c.name === 'finger_thumb') gsap.to(c.rotation, { z: 0.4, duration: 0.2 });
+                        if (c.name === 'finger_0') gsap.to(c.rotation, { x: 0, z: -0.15, duration: 0.15 });
+                        else if (c.name === 'finger_1') gsap.to(c.rotation, { x: 0, z: -0.05, duration: 0.15 });
+                        else if (c.name === 'finger_2') gsap.to(c.rotation, { x: 0, z: 0.05, duration: 0.15 });
+                        else if (c.name === 'finger_3') gsap.to(c.rotation, { x: 0, z: 0.15, duration: 0.15 });
+                        else if (c.name === 'finger_thumb') gsap.to(c.rotation, { z: 0.4, duration: 0.15 });
                     }
                 }
             });
         }
 
-
-        // --- АВТО-ВХОД И ЛОКАЛЬНОЕ ХРАНЕНИЕ ---
-        
+        // --- ЛОКАЛЬНОЕ ХРАНЕНИЕ И АВТО-ВХОД ---
         window.addEventListener('DOMContentLoaded', () => {
             const savedName = localStorage.getItem('brawl_knuckles_name');
             if (savedName) {
-                // Если имя сохранено, сразу входим без экрана ввода
                 myUsername = savedName;
                 socket.emit('join', savedName);
             }
@@ -900,7 +897,7 @@ function getHTMLClient() {
             const nickname = document.getElementById('username-input').value.trim();
             if(nickname) {
                 myUsername = nickname;
-                localStorage.setItem('brawl_knuckles_name', nickname); // Сохраняем имя
+                localStorage.setItem('brawl_knuckles_name', nickname);
                 playSound('click');
                 socket.emit('join', nickname);
             }
@@ -917,16 +914,12 @@ function getHTMLClient() {
             startBackgroundMusic();
         });
 
-
-        // --- ЧАТ И КНОПКА ЗАКРЫТЬ (✖) ---
-
-        // Открыть чат
+        // --- ЧАТ ---
         document.getElementById('chat-toggle-btn').addEventListener('click', () => {
             document.getElementById('chat-panel').classList.add('open');
             playSound('click');
         });
 
-        // Закрыть чат
         document.getElementById('chat-close-btn').addEventListener('click', () => {
             document.getElementById('chat-panel').classList.remove('open');
             playSound('click');
@@ -951,9 +944,7 @@ function getHTMLClient() {
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
-
-        // --- ИГРОВОЙ ПРОЦЕСС ---
-
+        // --- ТАБЛИЦА ЛИДЕРОВ И ПОИСК ---
         socket.on('update_leaderboard', (data) => {
             document.getElementById('online-counter').textContent = "Онлайн: " + data.onlineCount;
             const container = document.getElementById('leaderboard-rows');
@@ -1009,6 +1000,7 @@ function getHTMLClient() {
             playShakeHandsAnimation();
         });
 
+        // --- БОТ РЕЖИМ ---
         let botScore = [0, 0];
         let botRound = 1;
         let timerInterval;
@@ -1057,9 +1049,14 @@ function getHTMLClient() {
             enableControls(false);
             if (timerInterval) clearInterval(timerInterval);
 
+            // Твоя рука сразу показывает твой выбор внизу экрана
+            applyMoveToHand(leftHand, myMove);
+
+            // Оппонент покажет свой выбор только при полном столкновении!
             const moves = ['rock', 'scissors', 'paper'];
             const botMove = moves[Math.floor(Math.random() * 3)];
 
+            // Слияние рук и вскрытие жестов
             showMoves3D(myMove, botMove);
 
             let result = 'draw';
@@ -1103,7 +1100,6 @@ function getHTMLClient() {
                     if(myElo < 0) myElo = 0;
 
                     socket.emit('chat_message', "[Бот-Матч] Я сыграл в оффлайне! Мой новый рейтинг: " + myElo + " ELO"); 
-
                     showMatchResult(matchResult, eloChange, myElo);
                 } else {
                     startBotRound();
@@ -1111,6 +1107,7 @@ function getHTMLClient() {
             }, 4000);
         }
 
+        // --- МУЛЬТИПЛЕЕРНЫЕ СОБЫТИЯ ---
         socket.on('start_round', (data) => {
             document.getElementById('game-round-title').textContent = "РАУНД " + data.roundNum;
             resetHandFingers(leftHand);
@@ -1130,10 +1127,16 @@ function getHTMLClient() {
             }, 100);
         });
 
+        // Секретность: Оппонент сделал выбор, но ты узнаешь его только при раскрытии раунда
+        socket.on('opponent_made_move', () => {
+            console.log("Оппонент сделал свой выбор! Ждём тебя...");
+        });
+
         socket.on('round_result', (data) => {
             enableControls(false);
             if (timerInterval) clearInterval(timerInterval);
 
+            // Показываем жесты только в этот момент!
             showMoves3D(data.myMove, data.oppMove);
 
             if(data.result === 'win') playSound('win');
@@ -1157,6 +1160,9 @@ function getHTMLClient() {
                 playSound('click');
                 enableControls(false);
                 
+                // Твоя рука сразу показывает твой выбор снизу экрана (ты-то свой выбор видишь!)
+                applyMoveToHand(leftHand, move);
+
                 if (botMode) {
                     processBotRound(move);
                 } else {
@@ -1212,12 +1218,23 @@ function getHTMLClient() {
             gsap.to(resTitle, { scale: 1, opacity: 1, duration: 0.5, ease: 'back.out(1.7)' });
         }
 
+        // БЕЗВЫЛЕТНЫЙ ВЫХОД В МЕНЮ (ИСПРАВЛЕНО!)
         document.getElementById('result-continue-btn').addEventListener('click', () => {
             playSound('click');
+            
+            // Скрываем игровые экраны
             document.getElementById('result-overlay').style.display = 'none';
             document.getElementById('game-screen').classList.remove('active-screen');
+            
+            // Возвращаем главное меню
             document.getElementById('menu-screen').classList.add('active-screen');
-            location.reload(); // Перезапустит страницу, авто-вход сработает моментально!
+            
+            // Сбрасываем режимы
+            botMode = false;
+            isOnlineMode = false;
+
+            // Пересоздаем красивый фон меню
+            init3DMenu();
         });
 
         window.addEventListener('resize', () => {

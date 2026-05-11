@@ -26,7 +26,7 @@ db.serialize(() => {
     )`);
 });
 
-// Автопингер для Render (чтобы сервер не засыпал на бесплатном тарифе)
+// Автопингер для Render
 const RENDER_EXTERNAL_URL = process.env.RENDER_EXTERNAL_URL;
 if (RENDER_EXTERNAL_URL) {
     setInterval(() => {
@@ -35,7 +35,7 @@ if (RENDER_EXTERNAL_URL) {
         }).on('error', (err) => {
             console.error('[Auto-Pinger] Ошибка пинга:', err.message);
         });
-    }, 10 * 60 * 1000); // Каждые 10 минут
+    }, 10 * 60 * 1000);
 }
 
 // Отдача фронтенда напрямую из сервера
@@ -63,7 +63,6 @@ io.on('connection', (socket) => {
             } else {
                 db.run("INSERT INTO users (username, elo) VALUES (?, 0)", [cleanName], function(err) {
                     if (err) {
-                        // Если гонка условий, берем существующего
                         db.get("SELECT elo FROM users WHERE username = ?", [cleanName], (err, row2) => {
                             loginUser(socket, cleanName, row2 ? row2.elo : 0);
                         });
@@ -79,7 +78,7 @@ io.on('connection', (socket) => {
     socket.on('chat_message', (msg) => {
         const user = onlineUsers[socket.id];
         if (!user) return;
-        const cleanMsg = msg.trim().substring(0, 100); // Лимит 100 символов от спама
+        const cleanMsg = msg.trim().substring(0, 100);
         if (cleanMsg.length === 0) return;
 
         io.emit('chat_broadcast', {
@@ -93,7 +92,6 @@ io.on('connection', (socket) => {
         const user = onlineUsers[socket.id];
         if (!user) return;
 
-        // Если уже в поиске, игнорируем
         if (matchmakingQueue.find(p => p.socketId === socket.id)) return;
 
         matchmakingQueue.push({ socketId: socket.id, username: user.username, elo: user.elo });
@@ -110,7 +108,7 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Ход игрока (в онлайн матче)
+    // Ход игрока
     socket.on('make_move', (move) => {
         const gameId = socket.gameId;
         if (!gameId || !activeGames[gameId]) return;
@@ -122,7 +120,6 @@ io.on('connection', (socket) => {
         if (game.roundState === 'waiting_moves' && !player.currentMove) {
             player.currentMove = move;
             
-            // Если оба сделали ход
             if (game.p1.currentMove && game.p2.currentMove) {
                 processRound(game);
             }
@@ -133,11 +130,9 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         console.log(`Пользователь отключился: ${socket.id}`);
         
-        // Удаление из очереди
         const qIndex = matchmakingQueue.findIndex(p => p.socketId === socket.id);
         if (qIndex !== -1) matchmakingQueue.splice(qIndex, 1);
 
-        // Обработка отключения во время игры
         const gameId = socket.gameId;
         if (gameId && activeGames[gameId]) {
             const game = activeGames[gameId];
@@ -146,7 +141,6 @@ io.on('connection', (socket) => {
             
             if (oppSocket) {
                 oppSocket.emit('opponent_disconnected');
-                // Начисляем автопобеду оставшемуся игроку (+ELO)
                 updateElo(onlineUsers[opponentSocketId].username, 20, (newElo) => {
                     onlineUsers[opponentSocketId].elo = newElo;
                     oppSocket.emit('elo_updated', newElo);
@@ -189,7 +183,6 @@ function checkMatchmaking() {
         const p2Socket = io.sockets.sockets.get(p2.socketId);
 
         if (!p1Socket || !p2Socket) {
-            // Если кто-то отвалился, возвращаем живого обратно в очередь
             if (p1Socket) matchmakingQueue.unshift(p1);
             if (p2Socket) matchmakingQueue.unshift(p2);
             return;
@@ -203,11 +196,10 @@ function checkMatchmaking() {
             p1: { socketId: p1.socketId, username: p1.username, elo: p1.elo, wins: 0, currentMove: null },
             p2: { socketId: p2.socketId, username: p2.username, elo: p2.elo, wins: 0, currentMove: null },
             roundsPlayed: 0,
-            roundHistory: [], // 'p1', 'p2', 'draw'
+            roundHistory: [],
             roundState: 'loading'
         };
 
-        // Запуск экрана знакомства (5 секунд)
         io.to(p1.socketId).emit('match_found', { opponent: { username: p2.username, elo: p2.elo }, role: 'p1' });
         io.to(p2.socketId).emit('match_found', { opponent: { username: p1.username, elo: p1.elo }, role: 'p2' });
 
@@ -226,12 +218,9 @@ function startRound(game) {
     io.to(game.p1.socketId).emit('start_round', { roundNum: game.roundsPlayed + 1, score: [game.p1.wins, game.p2.wins] });
     io.to(game.p2.socketId).emit('start_round', { roundNum: game.roundsPlayed + 1, score: [game.p2.wins, game.p1.wins] });
 
-    // Таймер на 10 секунд на ход
     game.roundTimer = setTimeout(() => {
-        // Если время истекло, проверяем, кто не сходил
         if (game.roundState === 'waiting_moves') {
             if (!game.p1.currentMove && !game.p2.currentMove) {
-                // Оба пропустили
                 game.p1.currentMove = 'none';
                 game.p2.currentMove = 'none';
             } else if (!game.p1.currentMove) {
@@ -251,7 +240,7 @@ function processRound(game) {
     const m1 = game.p1.currentMove;
     const m2 = game.p2.currentMove;
 
-    let result = 'draw'; // 'p1', 'p2', 'draw'
+    let result = 'draw';
 
     if (m1 === 'none' && m2 === 'none') {
         result = 'draw';
@@ -277,12 +266,10 @@ function processRound(game) {
     game.roundsPlayed++;
     game.roundHistory.push(result);
 
-    // Рассылаем результаты раунда для анимации
     io.to(game.p1.socketId).emit('round_result', { myMove: m1, oppMove: m2, result: result === 'p1' ? 'win' : (result === 'p2' ? 'lose' : 'draw'), score: [game.p1.wins, game.p2.wins] });
     io.to(game.p2.socketId).emit('round_result', { myMove: m2, oppMove: m1, result: result === 'p2' ? 'win' : (result === 'p1' ? 'lose' : 'draw'), score: [game.p2.wins, game.p1.wins] });
 
     setTimeout(() => {
-        // Проверяем условия окончания матча
         const isMatchOver = game.p1.wins >= 2 || game.p2.wins >= 2 || game.roundsPlayed >= 3;
 
         if (isMatchOver) {
@@ -290,7 +277,7 @@ function processRound(game) {
         } else {
             startRound(game);
         }
-    }, 4500); // 4.5 секунды на проигрывание 3D анимации рук
+    }, 4500);
 }
 
 function endMatch(game) {
@@ -309,7 +296,6 @@ function endMatch(game) {
         p2EloChange = 25;
     }
 
-    // Снимать ELO ниже нуля нельзя
     const applyEloChange = (username, change, callback) => {
         updateElo(username, change, callback);
     };
@@ -340,7 +326,7 @@ function updateElo(username, change, callback) {
     db.get("SELECT elo FROM users WHERE username = ?", [username], (err, row) => {
         let currentElo = row ? row.elo : 0;
         let newElo = currentElo + change;
-        if (newElo < 0) newElo = 0; // Рейтинг никогда не падает ниже 0
+        if (newElo < 0) newElo = 0;
 
         db.run("UPDATE users SET elo = ? WHERE username = ?", [newElo, username], (err) => {
             callback(newElo);
@@ -348,12 +334,10 @@ function updateElo(username, change, callback) {
     });
 }
 
-// Запуск сервера
 server.listen(PORT, () => {
     console.log(`Сервер запущен на порту ${PORT}`);
 });
 
-// КЛИЕНТСКИЙ КОД (Вшит для простоты деплоя в один файл на Render)
 function getHTMLClient() {
     return `
 <!DOCTYPE html>
@@ -369,7 +353,6 @@ function getHTMLClient() {
         * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; font-family: 'Arial Black', Impact, sans-serif; }
         body, html { width: 100%; height: 100%; overflow: hidden; background: #120136; color: #fff; }
 
-        /* Экраны игры */
         .screen {
             position: absolute; width: 100%; height: 100%; top: 0; left: 0;
             display: none; flex-direction: column; justify-content: space-between; align-items: center;
@@ -377,7 +360,6 @@ function getHTMLClient() {
         }
         .active-screen { display: flex !important; }
 
-        /* ЭКРАН РЕГИСТРАЦИИ */
         #auth-screen {
             background: linear-gradient(135deg, #1f1c2c, #928dab);
             justify-content: center; gap: 20px;
@@ -396,12 +378,10 @@ function getHTMLClient() {
         }
         .brawl-btn:active { transform: translateY(6px); box-shadow: 0 2px 0 #a04000; }
 
-        /* ГЛАВНОЕ МЕНЮ */
         #menu-screen {
             background: radial-gradient(circle, #2d0066 0%, #0d001a 100%);
         }
 
-        /* Кубки как в Brawl Stars */
         .trophy-container {
             position: absolute; top: 15px; left: 15px;
             background: linear-gradient(to right, #202020, #3e3e3e);
@@ -417,14 +397,12 @@ function getHTMLClient() {
         }
         .trophy-count { font-size: 24px; color: #fff; font-weight: bold; text-shadow: 2px 2px #000; }
 
-        /* Кнопка играть */
         .play-btn-container { position: absolute; bottom: 30px; right: 30px; }
         .play-btn {
             background: linear-gradient(#f05a28, #e00000);
             padding: 20px 60px; font-size: 28px; border-radius: 35px;
         }
 
-        /* Чат справа */
         .chat-toggle {
             position: absolute; right: 30px; top: 30px;
             background: #0088cc; border: 3px solid #fff; border-radius: 50%;
@@ -438,14 +416,19 @@ function getHTMLClient() {
             transition: right 0.3s ease; box-shadow: -10px 0 20px rgba(0,0,0,0.5);
         }
         .chat-panel.open { right: 0; }
-        .chat-header { font-size: 20px; margin-bottom: 10px; border-bottom: 2px solid #00bbff; padding-bottom: 5px; }
+        .chat-header { 
+            font-size: 20px; margin-bottom: 10px; border-bottom: 2px solid #00bbff; 
+            padding-bottom: 5px; display: flex; justify-content: space-between; align-items: center;
+        }
+        .chat-close-btn {
+            cursor: pointer; font-size: 20px; color: #ff3333; background: none; border: none; font-weight: bold;
+        }
         .chat-messages { flex-grow: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
         .chat-msg { background: rgba(0,0,0,0.3); padding: 8px 12px; border-radius: 12px; font-size: 14px; word-break: break-word; }
         .chat-msg span { color: #ffcb05; }
         .chat-input-area { display: flex; gap: 5px; }
         .chat-input { flex-grow: 1; padding: 10px; border-radius: 10px; border: none; font-size: 14px; }
 
-        /* Статистика игроков слева */
         .leaderboard-panel {
             position: absolute; left: 15px; top: 80px; width: 240px; max-height: 50%;
             background: rgba(0,0,0,0.6); border: 2px solid #3e3e3e; border-radius: 15px;
@@ -454,7 +437,6 @@ function getHTMLClient() {
         .leaderboard-title { color: #ffcb05; margin-bottom: 5px; border-bottom: 1px solid #ffcb05; }
         .leaderboard-row { display: flex; justify-content: space-between; padding: 3px 0; }
 
-        /* Выбор режима */
         .modal-overlay {
             position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.8);
             z-index: 200; display: none; align-items: center; justify-content: center;
@@ -465,22 +447,31 @@ function getHTMLClient() {
             box-shadow: 0 10px 0 #000;
         }
 
-        /* ЭКРАН ИГРЫ */
         #game-screen { background: #0d001a; }
         #canvas-3d-container { position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 1; }
 
-        /* Интерфейс матча */
         .game-ui { position: absolute; width: 100%; height: 100%; top: 0; left: 0; z-index: 5; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 20px; }
         .hud-header { display: flex; justify-content: space-between; align-items: center; width: 100%; }
         
-        /* Круги Нокаута (3 раунда) */
         .knockout-rounds { display: flex; gap: 8px; background: rgba(0,0,0,0.5); padding: 5px 15px; border-radius: 20px; }
         .ko-circle { width: 24px; height: 24px; border-radius: 50%; border: 2px solid #fff; background: #333; }
         .ko-blue.active { background: #0088ff; box-shadow: 0 0 10px #0088ff; }
         .ko-red.active { background: #ff3333; box-shadow: 0 0 10px #ff3333; }
 
-        /* Игровые контроллеры внизу */
-        .game-controls { display: flex; gap: 15px; pointer-events: auto; justify-content: center; margin-bottom: 10px; width: 100%; }
+        /* Понятная шпаргалка правил */
+        .rules-bar {
+            background: rgba(0,0,0,0.7); border: 2px solid #ffcb05; border-radius: 15px;
+            padding: 6px 15px; font-size: 14px; text-align: center; color: #fff;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.5); text-shadow: 1px 1px 0 #000;
+            display: inline-block; margin-bottom: 5px; pointer-events: none;
+        }
+
+        .game-controls-container {
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            width: 100%; pointer-events: auto;
+        }
+
+        .game-controls { display: flex; gap: 15px; justify-content: center; margin-bottom: 10px; width: 100%; }
         .control-btn {
             width: 90px; height: 90px; border-radius: 50%; border: 4px solid #fff;
             display: flex; flex-direction: column; align-items: center; justify-content: center;
@@ -493,11 +484,9 @@ function getHTMLClient() {
         .control-btn[data-move="paper"] { background: linear-gradient(#62c462, #51a351); box-shadow: 0 6px 0 #387338; }
         .control-btn[data-move="scissors"] { background: linear-gradient(#fbb450, #f89406); box-shadow: 0 6px 0 #ad6704; }
 
-        /* Таймер */
         .timer-bar-container { width: 250px; height: 20px; background: #333; border: 3px solid #fff; border-radius: 10px; overflow: hidden; pointer-events: none; }
         .timer-bar { width: 100%; height: 100%; background: #ffcb05; transition: width 0.1s linear; }
 
-        /* Экран результатов раунда/игры */
         .overlay-result {
             position: absolute; width: 100%; height: 100%; background: rgba(0,0,0,0.85);
             z-index: 300; display: none; flex-direction: column; align-items: center; justify-content: center;
@@ -508,12 +497,12 @@ function getHTMLClient() {
         .result-title.lose { color: #ff3333; }
         .result-title.draw { color: #cccccc; }
 
-        /* Адаптивность для мобилок */
         @media (max-width: 768px) {
-            .leaderboard-panel { display: none; } /* Скрываем топ на маленьких экранах */
+            .leaderboard-panel { display: none; }
             .chat-panel { width: 260px; }
             .play-btn { padding: 15px 40px; font-size: 22px; }
             .control-btn { width: 70px; height: 70px; font-size: 24px; }
+            .rules-bar { font-size: 11px; padding: 4px 10px; }
         }
     </style>
 </head>
@@ -541,7 +530,10 @@ function getHTMLClient() {
         <div id="chat-toggle-btn" class="chat-toggle">💬</div>
 
         <div id="chat-panel" class="chat-panel">
-            <div class="chat-header">Глобальный Чат</div>
+            <div class="chat-header">
+                <span>Глобальный Чат</span>
+                <button id="chat-close-btn" class="chat-close-btn">✖</button>
+            </div>
             <div id="chat-messages" class="chat-messages"></div>
             <div class="chat-input-area">
                 <input type="text" id="chat-input" class="chat-input" placeholder="Сообщение..." maxlength="80">
@@ -592,10 +584,15 @@ function getHTMLClient() {
                 </div>
             </div>
 
-            <div class="game-controls">
-                <button class="control-btn" data-move="rock">✊</button>
-                <button class="control-btn" data-move="scissors">✌️</button>
-                <button class="control-btn" data-move="paper">✋</button>
+            <div class="game-controls-container">
+                <div class="rules-bar">
+                    ✊ бьёт ✌️ &nbsp;|&nbsp; ✌️ бьёт ✋ &nbsp;|&nbsp; ✋ бьёт ✊
+                </div>
+                <div class="game-controls">
+                    <button class="control-btn" data-move="rock" title="Камень">✊</button>
+                    <button class="control-btn" data-move="scissors" title="Ножницы">✌️</button>
+                    <button class="control-btn" data-move="paper" title="Бумага">✋</button>
+                </div>
             </div>
         </div>
     </div>
@@ -613,7 +610,6 @@ function getHTMLClient() {
         let isOnlineMode = false;
         let botMode = false;
 
-        // Звуки на Web Audio API (генеративные синтезаторы, чтобы не было проблем с путями к файлам)
         const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         
         function playSound(type) {
@@ -633,10 +629,10 @@ function getHTMLClient() {
                     osc.start(); osc.stop(audioCtx.currentTime + 0.15);
                 } else if (type === 'win') {
                     osc.type = 'triangle';
-                    osc.frequency.setValueAtTime(261.63, audioCtx.currentTime); // C4
-                    osc.frequency.setValueAtTime(329.63, audioCtx.currentTime + 0.1); // E4
-                    osc.frequency.setValueAtTime(392.00, audioCtx.currentTime + 0.2); // G4
-                    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime + 0.3); // C5
+                    osc.frequency.setValueAtTime(261.63, audioCtx.currentTime);
+                    osc.frequency.setValueAtTime(329.63, audioCtx.currentTime + 0.1);
+                    osc.frequency.setValueAtTime(392.00, audioCtx.currentTime + 0.2);
+                    osc.frequency.setValueAtTime(523.25, audioCtx.currentTime + 0.3);
                     gain.gain.setValueAtTime(0.15, audioCtx.currentTime);
                     gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.5);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.5);
@@ -648,7 +644,6 @@ function getHTMLClient() {
                     gain.gain.linearRampToValueAtTime(0.01, audioCtx.currentTime + 0.45);
                     osc.start(); osc.stop(audioCtx.currentTime + 0.45);
                 } else if (type === 'clap') {
-                    // Хлопок на шуме
                     const bufferSize = audioCtx.sampleRate * 0.1;
                     const buffer = audioCtx.createBuffer(1, bufferSize, audioCtx.sampleRate);
                     const data = buffer.getChannelData(0);
@@ -669,7 +664,6 @@ function getHTMLClient() {
             } catch (e) { console.log(e); }
         }
 
-        // Музыка на фоне (генеративная, в ритме хлопков)
         let musicInterval;
         function startBackgroundMusic() {
             if (musicInterval) clearInterval(musicInterval);
@@ -678,12 +672,10 @@ function getHTMLClient() {
                 try {
                     if (audioCtx.state === 'suspended') return;
                     beat++;
-                    // Проигрываем хлопок в ритме (каждые 4 удара)
                     if (beat % 4 === 0) {
                         playSound('clap');
-                        animateClapHand(); // Анимация 3D руки
+                        animateClapHand();
                     }
-                    // Мелодия баса
                     const osc = audioCtx.createOscillator();
                     const gain = audioCtx.createGain();
                     osc.connect(gain); gain.connect(audioCtx.destination);
@@ -697,13 +689,15 @@ function getHTMLClient() {
             }, 350);
         }
 
-        // --- THREE.JS СЦЕНА, АНИМАЦИЯ 3D РУК ---
+        // --- THREE.JS СЦЕНА (МОДЕЛИ) ---
         let scene, camera, renderer, leftHand, rightHand;
         let menuScene, menuCamera, menuRenderer, menuHand;
         let clock = new THREE.Clock();
 
         function init3DMenu() {
             const container = document.getElementById('menu-3d-bg');
+            if (!container) return;
+            container.innerHTML = '';
             menuScene = new THREE.Scene();
             menuCamera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
             menuCamera.position.set(0, 0, 5);
@@ -718,7 +712,6 @@ function getHTMLClient() {
             dirLight.position.set(5, 5, 5);
             menuScene.add(dirLight);
 
-            // Создаем простую руку из примитивов
             menuHand = createProceduralHand('#ffcb05');
             menuHand.position.set(0, -1, 0);
             menuHand.scale.set(1.5, 1.5, 1.5);
@@ -732,25 +725,38 @@ function getHTMLClient() {
             const color = new THREE.Color(colorStr);
             const mat = new THREE.MeshStandardMaterial({ color: color, roughness: 0.5 });
             
-            // Ладонь
+            // Прямоугольная ладонь
             const palmGeom = new THREE.BoxGeometry(0.8, 0.8, 0.2);
             const palm = new THREE.Mesh(palmGeom, mat);
             handGroup.add(palm);
 
-            // Пальцы
-            const fingerGeom = new THREE.BoxGeometry(0.15, 0.4, 0.15);
+            // Четыре основных пальца (из звеньев, чтобы их можно было реалистично гнуть)
+            const fingers = [];
             for (let i = 0; i < 4; i++) {
-                const finger = new THREE.Mesh(fingerGeom, mat);
-                finger.position.set(-0.3 + i * 0.2, 0.5, 0);
-                finger.name = "finger_" + i;
-                handGroup.add(finger);
+                const fingerPivot = new THREE.Group();
+                fingerPivot.position.set(-0.3 + i * 0.2, 0.4, 0);
+                fingerPivot.name = "finger_" + i;
+
+                // Основное звено (Фаланга)
+                const boneGeom = new THREE.BoxGeometry(0.16, 0.4, 0.16);
+                const bone = new THREE.Mesh(boneGeom, mat);
+                bone.position.y = 0.2; // Сдвиг центра, чтобы сгиб был у основания
+                fingerPivot.add(bone);
+
+                handGroup.add(fingerPivot);
             }
-            // Большой палец
-            const thumbGeom = new THREE.BoxGeometry(0.18, 0.3, 0.15);
-            const thumb = new THREE.Mesh(thumbGeom, mat);
-            thumb.position.set(-0.45, 0.1, 0);
-            thumb.rotation.z = 0.5;
-            handGroup.add(thumb);
+
+            // Большой палец (под углом)
+            const thumbPivot = new THREE.Group();
+            thumbPivot.position.set(-0.45, 0.1, 0.05);
+            thumbPivot.rotation.z = 0.6;
+            thumbPivot.name = "finger_thumb";
+
+            const thumbBoneGeom = new THREE.BoxGeometry(0.18, 0.3, 0.16);
+            const thumbBone = new THREE.Mesh(thumbBoneGeom, mat);
+            thumbBone.position.y = 0.15;
+            thumbPivot.add(thumbBone);
+            handGroup.add(thumbPivot);
 
             return handGroup;
         }
@@ -758,20 +764,19 @@ function getHTMLClient() {
         function animateMenu() {
             requestAnimationFrame(animateMenu);
             if (menuHand) {
-                // Вращаем плавно руку
                 menuHand.rotation.y = Math.sin(Date.now() * 0.001) * 0.3;
             }
-            menuRenderer.render(menuScene, menuCamera);
+            if (menuRenderer && menuScene && menuCamera) {
+                menuRenderer.render(menuScene, menuCamera);
+            }
         }
 
         function animateClapHand() {
             if (!menuHand) return;
-            // Быстрый хлопок вверх-вниз в ритм
             gsap.to(menuHand.position, { y: -0.6, duration: 0.1, yoyo: true, repeat: 1 });
             gsap.to(menuHand.scale, { x: 1.7, y: 1.7, duration: 0.1, yoyo: true, repeat: 1 });
         }
 
-        // Основная Игровая Сцена
         function init3DGame() {
             const container = document.getElementById('canvas-3d-container');
             container.innerHTML = '';
@@ -807,14 +812,14 @@ function getHTMLClient() {
 
         function animateGame() {
             requestAnimationFrame(animateGame);
-            renderer.render(scene, camera);
+            if (renderer && scene && camera) {
+                renderer.render(scene, camera);
+            }
         }
 
-        // Анимация тряски руками перед показом выбора
         function playShakeHandsAnimation() {
             if (!leftHand || !rightHand) return;
             
-            // Сбрасываем углы и пальцы
             resetHandFingers(leftHand);
             resetHandFingers(rightHand);
 
@@ -826,11 +831,9 @@ function getHTMLClient() {
         }
 
         function showMoves3D(myMove, oppMove) {
-            // Трансформируем 3D пальцы под выбор
             applyMoveToHand(leftHand, myMove);
             applyMoveToHand(rightHand, oppMove);
 
-            // Резко выдвигаем руки вперед
             gsap.to(leftHand.position, { z: 1.5, y: -0.5, duration: 0.3 });
             gsap.to(rightHand.position, { z: 1.5, y: 0.5, duration: 0.3 });
         }
@@ -839,40 +842,65 @@ function getHTMLClient() {
             hand.position.set(hand === leftHand ? -1.8 : 1.8, hand === leftHand ? -1.5 : 1.5, 0);
             hand.children.forEach(function(c) {
                 if(c.name.startsWith('finger_')) {
-                    c.scale.set(1, 1, 1);
+                    c.rotation.x = 0;
+                    c.rotation.z = (c.name === 'finger_thumb') ? 0.6 : 0;
                     c.visible = true;
                 }
             });
         }
 
+        // КРУТЫЕ МОДЕЛИ КАМЕНЬ / НОЖНИЦЫ / БУМАГА
         function applyMoveToHand(hand, move) {
-            // Имитируем Камень, Ножницы, Бумагу
             hand.children.forEach(function(c) {
                 if (c.name.startsWith('finger_')) {
                     if (move === 'rock') {
-                        c.scale.y = 0.1; // Сжатые пальцы
+                        // Камень: Все сжимается в кулак!
+                        gsap.to(c.rotation, { x: 1.4, duration: 0.2 });
+                        if (c.name === 'finger_thumb') {
+                            gsap.to(c.rotation, { z: 1.4, duration: 0.2 });
+                        }
                     } else if (move === 'scissors') {
-                        // Только 2 пальца видны
-                        if (c.name === 'finger_0' || c.name === 'finger_1') {
-                            c.scale.y = 1;
+                        // Ножницы: Вытянуты только указательный (0) и средний (1), раздвинуты «V»!
+                        if (c.name === 'finger_0') {
+                            gsap.to(c.rotation, { x: 0, z: -0.2, duration: 0.2 });
+                        } else if (c.name === 'finger_1') {
+                            gsap.to(c.rotation, { x: 0, z: 0.2, duration: 0.2 });
                         } else {
-                            c.scale.y = 0.1;
+                            // Остальные согнуты
+                            gsap.to(c.rotation, { x: 1.4, duration: 0.2 });
+                        }
+                        if (c.name === 'finger_thumb') {
+                            gsap.to(c.rotation, { z: 1.4, duration: 0.2 });
                         }
                     } else if (move === 'paper' || move === 'none') {
-                        c.scale.y = 1; // Раскрытая ладонь
+                        // Бумага: Все пальцы идеально раскрыты и растопырены
+                        if (c.name === 'finger_0') gsap.to(c.rotation, { x: 0, z: -0.15, duration: 0.2 });
+                        else if (c.name === 'finger_1') gsap.to(c.rotation, { x: 0, z: -0.05, duration: 0.2 });
+                        else if (c.name === 'finger_2') gsap.to(c.rotation, { x: 0, z: 0.05, duration: 0.2 });
+                        else if (c.name === 'finger_3') gsap.to(c.rotation, { x: 0, z: 0.15, duration: 0.2 });
+                        else if (c.name === 'finger_thumb') gsap.to(c.rotation, { z: 0.4, duration: 0.2 });
                     }
                 }
             });
         }
 
 
-        // --- ИГРОВАЯ ЛОГИКА И СЕТЬ ---
+        // --- АВТО-ВХОД И ЛОКАЛЬНОЕ ХРАНЕНИЕ ---
+        
+        window.addEventListener('DOMContentLoaded', () => {
+            const savedName = localStorage.getItem('brawl_knuckles_name');
+            if (savedName) {
+                // Если имя сохранено, сразу входим без экрана ввода
+                myUsername = savedName;
+                socket.emit('join', savedName);
+            }
+        });
 
-        // Авторизация
         document.getElementById('login-btn').addEventListener('click', () => {
-            const nickname = document.getElementById('username-input').value;
+            const nickname = document.getElementById('username-input').value.trim();
             if(nickname) {
                 myUsername = nickname;
+                localStorage.setItem('brawl_knuckles_name', nickname); // Сохраняем имя
                 playSound('click');
                 socket.emit('join', nickname);
             }
@@ -882,7 +910,6 @@ function getHTMLClient() {
             myElo = data.elo;
             document.getElementById('user-elo').textContent = myElo;
             
-            // Переключаем экраны
             document.getElementById('auth-screen').classList.remove('active-screen');
             document.getElementById('menu-screen').classList.add('active-screen');
             
@@ -890,24 +917,18 @@ function getHTMLClient() {
             startBackgroundMusic();
         });
 
-        // Лидерборд и чат
-        socket.on('update_leaderboard', (data) => {
-            document.getElementById('online-counter').textContent = "Онлайн: " + data.onlineCount;
-            const container = document.getElementById('leaderboard-rows');
-            container.innerHTML = '';
-            data.leaderboard.forEach((player, i) => {
-                container.innerHTML += \`
-                    <div class="leaderboard-row" style="\${player.username === myUsername ? 'color: #ffcb05;' : ''}">
-                        <span>\${i+1}. \${player.username}</span>
-                        <span>🏆 \${player.elo}</span>
-                    </div>
-                \`;
-            });
+
+        // --- ЧАТ И КНОПКА ЗАКРЫТЬ (✖) ---
+
+        // Открыть чат
+        document.getElementById('chat-toggle-btn').addEventListener('click', () => {
+            document.getElementById('chat-panel').classList.add('open');
+            playSound('click');
         });
 
-        // Открытие чата
-        document.getElementById('chat-toggle-btn').addEventListener('click', () => {
-            document.getElementById('chat-panel').classList.toggle('open');
+        // Закрыть чат (Устранение бага с перекрытием экрана!)
+        document.getElementById('chat-close-btn').addEventListener('click', () => {
+            document.getElementById('chat-panel').classList.remove('open');
             playSound('click');
         });
 
@@ -926,13 +947,29 @@ function getHTMLClient() {
 
         socket.on('chat_broadcast', (data) => {
             const chatBox = document.getElementById('chat-messages');
-            chatBox.innerHTML += \`
+            chatBox.innerHTML += `
                 <div class="chat-msg"><span>\${data.username}:</span> \${data.message}</div>
-            \`;
+            `;
             chatBox.scrollTop = chatBox.scrollHeight;
         });
 
-        // Модалка режимов
+
+        // --- ИГРОВОЙ ПРОЦЕСС ---
+
+        socket.on('update_leaderboard', (data) => {
+            document.getElementById('online-counter').textContent = "Онлайн: " + data.onlineCount;
+            const container = document.getElementById('leaderboard-rows');
+            container.innerHTML = '';
+            data.leaderboard.forEach((player, i) => {
+                container.innerHTML += `
+                    <div class="leaderboard-row" style="\${player.username === myUsername ? 'color: #ffcb05;' : ''}">
+                        <span>\${i+1}. \${player.username}</span>
+                        <span>🏆 \${player.elo}</span>
+                    </div>
+                `;
+            });
+        });
+
         document.getElementById('play-trigger').addEventListener('click', () => {
             document.getElementById('mode-modal').style.display = 'flex';
             playSound('click');
@@ -942,14 +979,12 @@ function getHTMLClient() {
             playSound('click');
         });
 
-        // Оффлайн против Бота
         document.getElementById('mode-offline').addEventListener('click', () => {
             document.getElementById('mode-modal').style.display = 'none';
             playSound('click');
             startBotMatch();
         });
 
-        // Поиск онлайн игры
         document.getElementById('mode-online').addEventListener('click', () => {
             document.getElementById('mode-modal').style.display = 'none';
             playSound('click');
@@ -965,7 +1000,6 @@ function getHTMLClient() {
         socket.on('match_found', (data) => {
             document.getElementById('play-trigger').textContent = 'ИГРАТЬ';
             
-            // Инициализация игрового HUD
             document.getElementById('game-p1-name').textContent = myUsername + " (🏆" + myElo + ")";
             document.getElementById('game-p2-name').textContent = data.opponent.username + " (🏆" + data.opponent.elo + ")";
 
@@ -978,8 +1012,7 @@ function getHTMLClient() {
             playShakeHandsAnimation();
         });
 
-        // Офлайн игра (Бот)
-        let botScore = [0, 0]; // Наш, Бота
+        let botScore = [0, 0];
         let botRound = 1;
         let timerInterval;
 
@@ -1008,7 +1041,6 @@ function getHTMLClient() {
             playShakeHandsAnimation();
             enableControls(true);
 
-            // 10 Секунд таймер
             let timeLeft = 10;
             const timerBar = document.getElementById('game-timer-bar');
             timerBar.style.width = '100%';
@@ -1019,7 +1051,7 @@ function getHTMLClient() {
                 timerBar.style.width = (timeLeft / 10) * 100 + "%";
                 if(timeLeft <= 0) {
                     clearInterval(timerInterval);
-                    processBotRound('none'); // Слив по таймеру
+                    processBotRound('none');
                 }
             }, 100);
         }
@@ -1033,7 +1065,6 @@ function getHTMLClient() {
 
             showMoves3D(myMove, botMove);
 
-            // Логика победы раунда
             let result = 'draw';
             if (myMove === 'none') result = 'lose';
             else if (myMove !== botMove) {
@@ -1061,12 +1092,11 @@ function getHTMLClient() {
             setTimeout(() => {
                 botRound++;
                 if (botScore[0] >= 2 || botScore[1] >= 2 || botRound > 3) {
-                    // Конец матча против бота
                     let matchResult = 'draw';
                     let eloChange = 0;
                     if(botScore[0] > botScore[1]) {
                         matchResult = 'win';
-                        eloChange = 15; // Против ботов дают меньше
+                        eloChange = 15;
                     } else if(botScore[1] > botScore[0]) {
                         matchResult = 'lose';
                         eloChange = -10;
@@ -1075,7 +1105,6 @@ function getHTMLClient() {
                     myElo += eloChange;
                     if(myElo < 0) myElo = 0;
 
-                    // Обновляем на сервере, чтобы локальная бд синхронизировалась
                     socket.emit('chat_message', "[Бот-Матч] Я сыграл в оффлайне! Мой новый рейтинг: " + myElo + " ELO"); 
 
                     showMatchResult(matchResult, eloChange, myElo);
@@ -1085,7 +1114,6 @@ function getHTMLClient() {
             }, 4000);
         }
 
-        // Онлайн матчи по сети
         socket.on('start_round', (data) => {
             document.getElementById('game-round-title').textContent = "РАУНД " + data.roundNum;
             resetHandFingers(leftHand);
@@ -1126,7 +1154,6 @@ function getHTMLClient() {
             showMatchResult('win', 20, myElo + 20);
         });
 
-        // Конпки ходов
         document.querySelectorAll('.control-btn').forEach(btn => {
             btn.addEventListener('click', () => {
                 const move = btn.getAttribute('data-move');
@@ -1193,10 +1220,9 @@ function getHTMLClient() {
             document.getElementById('result-overlay').style.display = 'none';
             document.getElementById('game-screen').classList.remove('active-screen');
             document.getElementById('menu-screen').classList.add('add-screen');
-            location.reload(); // Перезапуск стейта для бесконечной стабильной игры
+            location.reload(); // Перезапустит страницу, авто-вход сработает моментально!
         });
 
-        // Отслеживание ресайза для 3D
         window.addEventListener('resize', () => {
             if(renderer && camera) {
                 const container = document.getElementById('canvas-3d-container');
